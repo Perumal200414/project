@@ -1,69 +1,19 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import pdfplumber
 import numpy as np
-
-# -----------------------------------
-# PAGE CONFIG
-# -----------------------------------
+import pdfplumber
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 st.set_page_config(
-    page_title="Palo Alto Networks - Attrition Analytics",
+    page_title="Palo Alto Networks Attrition Analytics",
     layout="wide"
 )
 
-# -----------------------------------
-# CUSTOM CSS
-# -----------------------------------
+st.title("Workforce Attrition Patterns & Risk Hotspot Analysis")
+st.subheader("Palo Alto Networks HR Analytics Dashboard")
 
-st.markdown("""
-<style>
-.main {
-    background-color: #f5f7fa;
-}
-
-.kpi-card {
-    background: white;
-    padding: 15px;
-    border-radius: 12px;
-    box-shadow: 0px 2px 8px rgba(0,0,0,0.08);
-    text-align:center;
-}
-
-.title {
-    color:#0B3D91;
-    font-size:40px;
-    font-weight:bold;
-}
-
-.subtitle{
-    color:#666;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# -----------------------------------
-# HEADER
-# -----------------------------------
-
-st.markdown(
-    "<div class='title'>Workforce Attrition Patterns & Risk Hotspot Analysis</div>",
-    unsafe_allow_html=True
-)
-
-st.markdown(
-    "<div class='subtitle'>Palo Alto Networks HR Analytics Dashboard</div>",
-    unsafe_allow_html=True
-)
-
-st.markdown("---")
-
-# -----------------------------------
-# SIDEBAR
-# -----------------------------------
-
+# Sidebar
 st.sidebar.title("Upload Files")
 
 data_file = st.sidebar.file_uploader(
@@ -76,65 +26,30 @@ pdf_file = st.sidebar.file_uploader(
     type=["pdf"]
 )
 
-# -----------------------------------
-# FLOWCHART
-# -----------------------------------
-
-with st.expander(" Project Workflow Flowchart", expanded=True):
-
-    st.code("""
-    Employee Data + PDF Report
-                │
-                ▼
-      Data Cleaning & Validation
-                │
-                ▼
-      Workforce Attrition Analysis
-                │
-      ┌─────────┼─────────┐
-      ▼         ▼         ▼
- Department  Gender   Experience
- Analysis    Analysis Analysis
-      │         │         │
-      └──────┬──┴──┬──────┘
-             ▼
-      Risk Hotspot Detection
-             ▼
-      Dashboard Visualization
-             ▼
-      Employee Risk Scoring
-    """)
-
-# -----------------------------------
-# PDF VIEWER
-# -----------------------------------
-
+# PDF Reader
 if pdf_file:
 
-    st.header(" Uploaded PDF Report")
-
-    text = ""
+    st.header("PDF Report Preview")
 
     try:
+        text = ""
+
         with pdfplumber.open(pdf_file) as pdf:
             for page in pdf.pages:
-                extracted = page.extract_text()
-                if extracted:
-                    text += extracted + "\n"
+                content = page.extract_text()
+                if content:
+                    text += content
 
         st.text_area(
-            "PDF Content Preview",
-            text[:8000],
-            height=300
+            "Extracted Text",
+            text[:5000],
+            height=250
         )
 
-    except:
-        st.warning("Unable to read PDF")
+    except Exception as e:
+        st.error(f"PDF Error: {e}")
 
-# -----------------------------------
-# DATASET ANALYSIS
-# -----------------------------------
-
+# Dataset Analysis
 if data_file:
 
     try:
@@ -149,85 +64,68 @@ if data_file:
         st.subheader("Dataset Preview")
         st.dataframe(df.head())
 
-        # -----------------------------
-        # KPIs
-        # -----------------------------
-
         total_emp = len(df)
 
         if "Attrition" in df.columns:
-
-            attrition_emp = len(
-                df[df["Attrition"].astype(str).str.upper() == "YES"]
+            left_emp = len(
+                df[
+                    df["Attrition"]
+                    .astype(str)
+                    .str.upper()
+                    == "YES"
+                ]
             )
-
-            attrition_rate = (
-                attrition_emp / total_emp * 100
-            )
-
         else:
-            attrition_emp = 0
-            attrition_rate = 0
+            left_emp = 0
+
+        attrition_rate = (
+            left_emp / total_emp * 100
+            if total_emp > 0
+            else 0
+        )
 
         c1, c2, c3 = st.columns(3)
 
-        c1.metric(
-            "Total Employees",
-            f"{total_emp:,}"
-        )
-
-        c2.metric(
-            "Employees Left",
-            attrition_emp
-        )
-
-        c3.metric(
-            "Attrition Rate",
-            f"{attrition_rate:.2f}%"
-        )
-
-        st.markdown("---")
-
-        # -----------------------------
-        # CHARTS
-        # -----------------------------
-
-        col1, col2 = st.columns(2)
+        c1.metric("Total Employees", total_emp)
+        c2.metric("Employees Left", left_emp)
+        c3.metric("Attrition Rate", f"{attrition_rate:.2f}%")
 
         # Attrition Chart
         if "Attrition" in df.columns:
 
-            fig = px.histogram(
-                df,
+            st.subheader("Attrition Distribution")
+
+            fig, ax = plt.subplots()
+
+            sns.countplot(
+                data=df,
                 x="Attrition",
-                color="Attrition",
-                title="Attrition Distribution"
+                palette="Set2",
+                ax=ax
             )
 
-            col1.plotly_chart(
-                fig,
-                use_container_width=True
-            )
+            st.pyplot(fig)
 
-        # Gender Chart
+        # Gender Pie Chart
         if "Gender" in df.columns:
 
-            fig = px.pie(
-                df,
-                names="Gender",
-                title="Gender Distribution"
+            st.subheader("Gender Distribution")
+
+            fig, ax = plt.subplots()
+
+            df["Gender"].value_counts().plot.pie(
+                autopct="%1.1f%%",
+                ax=ax
             )
 
-            col2.plotly_chart(
-                fig,
-                use_container_width=True
-            )
+            ax.set_ylabel("")
 
-        # -----------------------------
-        # DEPARTMENT ANALYSIS
-        # -----------------------------
+            st.pyplot(fig)
 
+        # Department Analysis
         if "Department" in df.columns:
+
+            st.subheader("Department Wise Employees")
 
             dept = (
                 df.groupby("Department")
@@ -235,74 +133,75 @@ if data_file:
                 .reset_index(name="Employees")
             )
 
-            fig = px.bar(
-                dept,
+            fig, ax = plt.subplots(figsize=(8,4))
+
+            sns.barplot(
+                data=dept,
                 x="Department",
                 y="Employees",
-                color="Department",
-                title="Department Wise Employees"
+                palette="viridis",
+                ax=ax
             )
 
-            st.plotly_chart(
-                fig,
-                use_container_width=True
-            )
+            plt.xticks(rotation=45)
 
-        # -----------------------------
-        # AGE ANALYSIS
-        # -----------------------------
+            st.pyplot(fig)
 
+        # Age Distribution
         if "Age" in df.columns:
 
-            fig = px.histogram(
-                df,
-                x="Age",
-                nbins=20,
-                color_discrete_sequence=["#0B3D91"],
-                title="Age Distribution"
+            st.subheader("Age Distribution")
+
+            fig, ax = plt.subplots()
+
+            sns.histplot(
+                df["Age"],
+                bins=20,
+                kde=True,
+                color="blue",
+                ax=ax
             )
 
-            st.plotly_chart(
-                fig,
-                use_container_width=True
-            )
+            st.pyplot(fig)
 
-        # -----------------------------
-        # EXPERIENCE ANALYSIS
-        # -----------------------------
-
+        # Years At Company
         if (
             "YearsAtCompany" in df.columns
             and "Attrition" in df.columns
         ):
 
-            fig = px.box(
-                df,
+            st.subheader(
+                "Years At Company vs Attrition"
+            )
+
+            fig, ax = plt.subplots()
+
+            sns.boxplot(
+                data=df,
                 x="Attrition",
                 y="YearsAtCompany",
-                color="Attrition",
-                title="Years At Company vs Attrition"
+                palette="Set3",
+                ax=ax
             )
 
-            st.plotly_chart(
-                fig,
-                use_container_width=True
-            )
+            st.pyplot(fig)
 
-        # -----------------------------
-        # RISK HOTSPOTS
-        # -----------------------------
-
+        # Risk Hotspots
         if (
             "Department" in df.columns
             and "Attrition" in df.columns
         ):
 
+            st.subheader(
+                "Attrition Risk Hotspots"
+            )
+
             risk = (
                 df[
                     df["Attrition"]
                     .astype(str)
-                    .str.upper() == "YES"
+                    .str.upper()
+                    == "YES"
                 ]
                 .groupby("Department")
                 .size()
@@ -311,94 +210,93 @@ if data_file:
 
             if len(risk) > 0:
 
-                fig = px.treemap(
-                    risk,
-                    path=["Department"],
-                    values="RiskCount",
-                    color="RiskCount",
-                    title=" Attrition Risk Hotspots"
+                fig, ax = plt.subplots()
+
+                sns.barplot(
+                    data=risk,
+                    x="Department",
+                    y="RiskCount",
+                    palette="Reds",
+                    ax=ax
                 )
 
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True
-                )
+                plt.xticks(rotation=45)
 
-        # -----------------------------
-        # HEATMAP
-        # -----------------------------
+                st.pyplot(fig)
 
-        st.subheader("Correlation Heatmap")
-
+        # Correlation Heatmap
         numeric = df.select_dtypes(
             include=np.number
         )
 
         if len(numeric.columns) > 1:
 
-            corr = numeric.corr()
-
-            fig = px.imshow(
-                corr,
-                text_auto=True,
-                color_continuous_scale="RdBu_r"
+            st.subheader(
+                "Correlation Heatmap"
             )
 
-            st.plotly_chart(
-                fig,
-                use_container_width=True
+            fig, ax = plt.subplots(
+                figsize=(10,6)
             )
 
-        # -----------------------------
-        # RISK SCORE MODEL
-        # -----------------------------
+            sns.heatmap(
+                numeric.corr(),
+                annot=True,
+                cmap="coolwarm",
+                ax=ax
+            )
 
-        st.subheader("Employee Risk Score")
+            st.pyplot(fig)
 
-        risk_score = pd.DataFrame()
-
+        # Risk Score
         if "YearsAtCompany" in df.columns:
 
-            risk_score["YearsAtCompany"] = df["YearsAtCompany"]
+            st.subheader(
+                "Employee Risk Score"
+            )
 
-            risk_score["RiskScore"] = (
-                100 -
-                (
-                    risk_score["YearsAtCompany"]
-                    /
-                    risk_score["YearsAtCompany"].max()
+            risk_df = pd.DataFrame()
+
+            risk_df["YearsAtCompany"] = (
+                df["YearsAtCompany"]
+            )
+
+            max_years = (
+                df["YearsAtCompany"].max()
+            )
+
+            risk_df["RiskScore"] = (
+                100
+                - (
+                    risk_df["YearsAtCompany"]
+                    / max_years
                 ) * 100
             )
 
-            risk_score["RiskCategory"] = np.where(
-                risk_score["RiskScore"] > 70,
+            risk_df["RiskCategory"] = np.where(
+                risk_df["RiskScore"] > 70,
                 "High Risk",
                 np.where(
-                    risk_score["RiskScore"] > 40,
+                    risk_df["RiskScore"] > 40,
                     "Medium Risk",
                     "Low Risk"
                 )
             )
 
             st.dataframe(
-                risk_score.head(20)
+                risk_df.head(20)
             )
 
-            fig = px.histogram(
-                risk_score,
+            fig, ax = plt.subplots()
+
+            sns.countplot(
+                data=risk_df,
                 x="RiskCategory",
-                color="RiskCategory",
-                title="Employee Risk Categories"
+                palette="Set1",
+                ax=ax
             )
 
-            st.plotly_chart(
-                fig,
-                use_container_width=True
-            )
-
-        # -----------------------------
-        # SUMMARY
-        # -----------------------------
+            st.pyplot(fig)
 
         st.success(
             "Analysis Completed Successfully"
@@ -406,10 +304,12 @@ if data_file:
 
     except Exception as e:
 
-        st.error(f"Error: {e}")
+        st.error(
+            f"Application Error: {e}"
+        )
 
 else:
 
     st.info(
-        "Upload Employee Dataset (CSV/XLSX) and PDF Report to start analysis."
+        "Upload Employee Dataset (CSV/XLSX) and PDF Report to Start Analysis"
     )
